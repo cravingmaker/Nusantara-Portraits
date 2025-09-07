@@ -23,6 +23,8 @@ interface ProvinceSelectorProps {
     onSelectProvince: (province: string) => void;
     generatedImages: Record<string, Record<string, ActivityImages>>;
     allProvincesData: Record<string, { activity: string, location: string }[]>;
+    isPlaying: boolean;
+    onTogglePlay: () => void;
 }
 
 const SmallLoadingSpinner = () => (
@@ -34,6 +36,17 @@ const SmallLoadingSpinner = () => (
     </div>
 );
 
+const PlayIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M4.018 15.59a.5.5 0 00.77.41l11-6.5a.5.5 0 000-.82l-11-6.5A.5.5 0 004 3.5v12a.5.5 0 00.018.09z" />
+    </svg>
+);
+const PauseIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M5 4h3v12H5V4zm7 0h3v12h-3V4z" />
+    </svg>
+);
+
 
 const CultureSelector: React.FC<ProvinceSelectorProps> = ({
     provinces,
@@ -41,6 +54,8 @@ const CultureSelector: React.FC<ProvinceSelectorProps> = ({
     onSelectProvince,
     generatedImages,
     allProvincesData,
+    isPlaying,
+    onTogglePlay,
 }) => {
     return (
         <div 
@@ -69,6 +84,24 @@ const CultureSelector: React.FC<ProvinceSelectorProps> = ({
                                 <img src={previewImage.url} alt={`Preview for ${province}`} className="w-full h-full object-cover" />
                             )}
                             {isGenerating && <SmallLoadingSpinner />}
+
+                            {isSelected && (
+                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center transition-opacity opacity-100">
+                                    <button 
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            onTogglePlay(); 
+                                        }} 
+                                        className={cn(
+                                            "w-12 h-12 bg-yellow-400/90 rounded-full flex items-center justify-center text-black hover:bg-yellow-400 transform transition-transform hover:scale-110",
+                                            !isPlaying && "pl-1" // Optically center the play icon
+                                        )}
+                                        aria-label={isPlaying ? 'Pause voiceover' : 'Play voiceover'}
+                                    >
+                                        {isPlaying ? <PauseIcon /> : <PlayIcon />}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         <p className="font-permanent-marker text-sm text-black text-center truncate w-full">
                             {province}

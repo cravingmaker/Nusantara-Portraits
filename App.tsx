@@ -4,9 +4,10 @@
 */
 import React, { useState, ChangeEvent, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { generateCulturalImage } from './services/geminiService';
+import { generateCulturalImage, getCulturalInformation } from './services/geminiService';
 import PolaroidCard from './components/PolaroidCard';
 import CultureSelector from './components/CultureSelector';
+import CulturalInfoModal from './components/CulturalInfoModal';
 import { createAlbumPage } from './lib/albumUtils';
 import Footer from './components/Footer';
 
@@ -352,6 +353,14 @@ interface ActivityImages {
     currentIndex: number;
 }
 
+interface InfoModalState {
+    isOpen: boolean;
+    isLoading: boolean;
+    title: string;
+    content: string;
+    error: string | null;
+}
+
 
 const primaryButtonClasses = "font-permanent-marker text-lg text-center text-yellow-300 bg-yellow-400/20 backdrop-blur-sm border-2 border-yellow-400/80 py-2 px-6 rounded-sm transform transition-all duration-200 hover:scale-105 hover:-rotate-2 hover:bg-yellow-400 hover:text-black";
 const secondaryButtonClasses = "font-permanent-marker text-lg text-center text-white bg-white/10 backdrop-blur-sm border-2 border-white/80 py-2 px-6 rounded-sm transform transition-transform duration-200 hover:scale-105 hover:rotate-2 hover:bg-white hover:text-black";
@@ -377,10 +386,86 @@ function App() {
     const [isDownloading, setIsDownloading] = useState<boolean>(false);
     const [appState, setAppState] = useState<'idle' | 'image-uploaded' | 'generating' | 'results-shown'>('idle');
     const [hoveredCaption, setHoveredCaption] = useState<string | null>(null);
+    const [infoModalState, setInfoModalState] = useState<InfoModalState>({
+        isOpen: false,
+        isLoading: false,
+        title: '',
+        content: '',
+        error: null,
+    });
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const activeAudioProvince = useRef<string | null>(null);
+    const [isPlaying, setIsPlaying] = useState<boolean>(false);
     const dragAreaRef = useRef<HTMLDivElement>(null);
     const isMobile = useMediaQuery('(max-width: 768px)');
 
     const originalSubtitle = "Your face, Indonesia's heritage. A cultural photo journey.";
+
+    useEffect(() => {
+        if (!audioRef.current) {
+            audioRef.current = new Audio();
+        }
+        const audioEl = audioRef.current;
+
+        const onPlay = () => setIsPlaying(true);
+        const onPauseOrEnd = () => setIsPlaying(false);
+        const onError = (e: Event) => {
+            console.error(`Audio error for ${audioEl.src}:`, e);
+            setIsPlaying(false);
+        };
+
+        audioEl.addEventListener('play', onPlay);
+        audioEl.addEventListener('pause', onPauseOrEnd);
+        audioEl.addEventListener('ended', onPauseOrEnd);
+        audioEl.addEventListener('error', onError);
+
+        const shouldPlayAudio = appState === 'generating' || appState === 'results-shown';
+
+        if (shouldPlayAudio) {
+            const provinceName = selectedProvince;
+            
+            if (activeAudioProvince.current !== provinceName) {
+                const audioSrc = `/voiceovers/${encodeURIComponent(provinceName)}.mp3`;
+                
+                audioEl.src = audioSrc; // Use relative path directly
+                activeAudioProvince.current = provinceName;
+                
+                audioEl.play().catch(e => {
+                    console.warn(`Autoplay for ${provinceName} was prevented.`, e);
+                });
+            }
+        } else {
+            audioEl.pause();
+            activeAudioProvince.current = null;
+        }
+
+        return () => {
+            audioEl.removeEventListener('play', onPlay);
+            audioEl.removeEventListener('pause', onPauseOrEnd);
+            audioEl.removeEventListener('ended', onPauseOrEnd);
+            audioEl.removeEventListener('error', onError);
+        };
+    }, [selectedProvince, appState]);
+
+    const handleTogglePlay = () => {
+        const audioEl = audioRef.current;
+        if (!audioEl) return;
+    
+        if (audioEl.paused) {
+            const provinceName = selectedProvince;
+            const audioSrc = `/voiceovers/${encodeURIComponent(provinceName)}.mp3`;
+
+            // The browser resolves the full URL from the relative path,
+            // so we check if the current `src` ends with our desired path.
+            if (!audioEl.src || !audioEl.src.endsWith(audioSrc)) {
+                audioEl.src = audioSrc;
+                activeAudioProvince.current = provinceName;
+            }
+            audioEl.play().catch(e => console.error("Error on manual play:", e));
+        } else {
+            audioEl.pause();
+        }
+    };
 
     const handleCardHover = (caption: string) => {
         if (!isMobile) {
@@ -713,6 +798,42 @@ function App() {
         }
     };
 
+    const handleShowCulturalInfo = async (activityName: string) => {
+        const activity = PROVINCES[selectedProvince]?.find(a => a.activity === activityName);
+        if (!activity) return;
+
+        setInfoModalState({
+            isOpen: true,
+            isLoading: true,
+            title: `Discovering ${selectedProvince}...`,
+            content: '',
+            error: null,
+        });
+
+        try {
+            const info = await getCulturalInformation(selectedProvince, activity.activity, activity.location);
+            setInfoModalState({
+                isOpen: true,
+                isLoading: false,
+                title: `${activity.activity}`,
+                content: info,
+                error: null,
+            });
+        } catch (err) {
+            setInfoModalState({
+                isOpen: true,
+                isLoading: false,
+                title: `Error`,
+                content: '',
+                error: err instanceof Error ? err.message : "An unknown error occurred while fetching information.",
+            });
+        }
+    };
+
+    const handleCloseInfoModal = () => {
+        setInfoModalState(prev => ({ ...prev, isOpen: false }));
+    };
+
     return (
         <main className="bg-black text-neutral-200 min-h-screen w-full flex flex-col items-center justify-between p-4 overflow-hidden relative">
             <div className="absolute top-0 left-0 w-full h-full bg-grid-white/[0.05]"></div>
@@ -805,6 +926,7 @@ function App() {
                                                 error={currentImage?.error}
                                                 onRegenerate={() => handleRefreshImage(activity.activity)}
                                                 onDownload={() => handleDownloadIndividualImage(activity.activity)}
+                                                onShowInfo={() => handleShowCulturalInfo(activity.activity)}
                                                 onNext={() => handleNextImage(activity.activity)}
                                                 onPrev={() => handlePrevImage(activity.activity)}
                                                 currentIndex={activityData?.currentIndex}
@@ -841,6 +963,7 @@ function App() {
                                                 error={currentImage?.error}
                                                 onRegenerate={() => handleRefreshImage(activity.activity)}
                                                 onDownload={() => handleDownloadIndividualImage(activity.activity)}
+                                                onShowInfo={() => handleShowCulturalInfo(activity.activity)}
                                                 onNext={() => handleNextImage(activity.activity)}
                                                 onPrev={() => handlePrevImage(activity.activity)}
                                                 currentIndex={activityData?.currentIndex}
@@ -864,11 +987,22 @@ function App() {
                         onSelectProvince={handleSelectProvince}
                         generatedImages={generatedImages}
                         allProvincesData={PROVINCES}
+                        isPlaying={isPlaying}
+                        onTogglePlay={handleTogglePlay}
                     />
                 </div>
             )}
             
             <Footer />
+
+            <CulturalInfoModal
+                isOpen={infoModalState.isOpen}
+                onClose={handleCloseInfoModal}
+                title={infoModalState.title}
+                content={infoModalState.content}
+                isLoading={infoModalState.isLoading}
+                error={infoModalState.error}
+            />
         </main>
     );
 }

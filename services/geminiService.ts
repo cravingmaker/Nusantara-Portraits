@@ -129,3 +129,46 @@ export async function generateCulturalImage(imageDataUrl: string, prompt: string
         }
     }
 }
+
+/**
+ * Generates a textual description about the culture of a specific Indonesian province.
+ * @param provinceName The name of the province (e.g., "Bali").
+ * @param activity The cultural activity being depicted (e.g., "Performing the Kecak dance").
+ * @param location The location of the activity (e.g., "Uluwatu temple at sunset").
+ * @returns A promise that resolves to a string containing the cultural information.
+ */
+export async function getCulturalInformation(provinceName: string, activity: string, location: string): Promise<string> {
+    try {
+        const prompt = `Tell me about the culture shown here.
+        - Province: ${provinceName}
+        - Activity: ${activity}
+        - Location: ${location}
+
+        Please provide a short, engaging description (around 100-150 words) covering:
+        1.  The traditional attire that would be worn for this activity. Describe its key elements and significance.
+        2.  The meaning or importance of the cultural activity itself.
+        3.  A brief, interesting fact about the location.
+
+        Format the response as clear, readable text. Do not use markdown.`;
+
+        console.log(`Requesting cultural info for ${provinceName}...`);
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+        });
+
+        const text = response.text;
+        
+        if (!text) {
+            throw new Error("The AI model returned an empty response.");
+        }
+        
+        return text;
+
+    } catch (error) {
+        console.error(`Failed to get cultural information for ${provinceName}:`, error);
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+        throw new Error(`Could not retrieve cultural information. ${errorMessage}`);
+    }
+}

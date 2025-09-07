@@ -15,10 +15,11 @@ interface PolaroidCardProps {
     status: ImageStatus;
     error?: string;
     dragConstraintsRef?: React.RefObject<HTMLElement>;
-    onRegenerate?: (caption: string) => void;
-    onDownload?: (caption: string) => void;
-    onNext?: (caption: string) => void;
-    onPrev?: (caption: string) => void;
+    onRegenerate?: () => void;
+    onDownload?: () => void;
+    onShowInfo?: () => void;
+    onNext?: () => void;
+    onPrev?: () => void;
     currentIndex?: number;
     totalImages?: number;
     isMobile?: boolean;
@@ -52,7 +53,7 @@ const Placeholder = () => (
 );
 
 
-const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, error, dragConstraintsRef, onRegenerate, onDownload, onNext, onPrev, currentIndex = 0, totalImages = 1, isMobile }) => {
+const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, error, dragConstraintsRef, onRegenerate, onDownload, onShowInfo, onNext, onPrev, currentIndex = 0, totalImages = 1, isMobile }) => {
     const [isDeveloped, setIsDeveloped] = useState(false);
     const [isImageLoaded, setIsImageLoaded] = useState(false);
     const lastShakeTime = useRef(0);
@@ -103,7 +104,7 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
 
         if (magnitude > velocityThreshold && dotProduct < 0 && (now - lastShakeTime.current > shakeCooldown)) {
             lastShakeTime.current = now;
-            onRegenerate(caption);
+            onRegenerate();
         }
 
         lastVelocity.current = { x, y };
@@ -121,11 +122,25 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
                             "absolute top-2 right-2 z-20 flex flex-col gap-2 transition-opacity duration-300",
                             !isMobile && "opacity-0 group-hover:opacity-100",
                         )}>
+                            {onRegenerate && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onRegenerate();
+                                    }}
+                                    className="p-2 bg-black/50 rounded-full text-white hover:bg-black/75 focus:outline-none focus:ring-2 focus:ring-white"
+                                    aria-label={`Regenerate image for ${caption}`}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.899 2.186l-1.42.71a5.002 5.002 0 00-8.479-1.554H10a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm12 14a1 1 0 01-1-1v-2.101a7.002 7.002 0 01-11.899-2.186l1.42-.71a5.002 5.002 0 008.479 1.554H10a1 1 0 110 2h6a1 1 0 011 1v6a1 1 0 01-1 1z" clipRule="evenodd" />
+                                    </svg>
+                                </button>
+                            )}
                             {onDownload && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation(); // Prevent drag from starting on click
-                                        onDownload(caption);
+                                        onDownload();
                                     }}
                                     className="p-2 bg-black/50 rounded-full text-white hover:bg-black/75 focus:outline-none focus:ring-2 focus:ring-white"
                                     aria-label={`Download image for ${caption}`}
@@ -135,17 +150,17 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
                                     </svg>
                                 </button>
                             )}
-                             {onRegenerate && (
+                            {onShowInfo && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        onRegenerate(caption);
+                                        onShowInfo();
                                     }}
                                     className="p-2 bg-black/50 rounded-full text-white hover:bg-black/75 focus:outline-none focus:ring-2 focus:ring-white"
-                                    aria-label={`Regenerate image for ${caption}`}
+                                    aria-label={`Learn more about ${caption}`}
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.899 2.186l-1.42.71a5.002 5.002 0 00-8.479-1.554H10a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm12 14a1 1 0 01-1-1v-2.101a7.002 7.002 0 01-11.899-2.186l1.42-.71a5.002 5.002 0 008.479 1.554H10a1 1 0 110-2h6a1 1 0 011 1v6a1 1 0 01-1 1z" clipRule="evenodd" />
+                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                                     </svg>
                                 </button>
                             )}
@@ -159,7 +174,7 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
                                 currentIndex === 0 && "hidden"
                             )}>
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); onPrev(caption); }}
+                                    onClick={(e) => { e.stopPropagation(); onPrev(); }}
                                     className="p-2 bg-black/50 rounded-full text-white hover:bg-black/75 disabled:opacity-30 disabled:cursor-not-allowed"
                                     aria-label="Previous image"
                                     disabled={currentIndex === 0}
@@ -176,7 +191,7 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
                                 !isMobile && "opacity-0 group-hover:opacity-100",
                              )}>
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); onNext(caption); }}
+                                    onClick={(e) => { e.stopPropagation(); onNext(); }}
                                     className="p-2 bg-black/50 rounded-full text-white hover:bg-black/75"
                                     aria-label="Next image"
                                 >
