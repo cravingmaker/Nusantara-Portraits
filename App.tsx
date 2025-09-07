@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import React, { useState, ChangeEvent, useRef, useEffect } from 'react';
+import React, { useState, ChangeEvent, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { generateCulturalImage, getCulturalInformation } from './services/geminiService';
 import PolaroidCard from './components/PolaroidCard';
@@ -400,6 +400,13 @@ function App() {
     const [draggedCard, setDraggedCard] = useState<string | null>(null);
     const isMobile = useMediaQuery('(max-width: 768px)');
 
+    // Use refs to hold the latest state for stable callbacks, preventing unnecessary re-renders.
+    const uploadedImageRef = useRef(uploadedImage);
+    uploadedImageRef.current = uploadedImage;
+
+    const generatedImagesRef = useRef(generatedImages);
+    generatedImagesRef.current = generatedImages;
+
     const originalSubtitle = "Your face, Indonesia's heritage. A cultural photo journey.";
 
     const handleCardHover = (caption: string, imageUrl?: string) => {
@@ -434,8 +441,10 @@ function App() {
         }
     };
 
-    const generateImagesForProvince = async (provinceName: string) => {
-        if (!uploadedImage) return;
+    const generateImagesForProvince = useCallback(async (provinceName: string) => {
+        if (!uploadedImageRef.current) return;
+        const currentUploadedImage = uploadedImageRef.current;
+
 
         const activities = PROVINCES[provinceName];
         if (!activities) return;
@@ -456,7 +465,7 @@ function App() {
         const processActivity = async (activity: { activity: string, location: string }) => {
             try {
                 const prompt = `Reimagine the person in this photo wearing a traditional ${provinceName} cultural costume while ${activity.activity} in ${activity.location}. The output must be a photorealistic, respectful, and beautiful image celebrating Indonesian culture.`;
-                const resultUrl = await generateCulturalImage(uploadedImage, prompt, provinceName);
+                const resultUrl = await generateCulturalImage(currentUploadedImage, prompt, provinceName);
                 setGeneratedImages(prev => ({
                     ...prev,
                     [provinceName]: {
@@ -493,7 +502,7 @@ function App() {
         });
 
         await Promise.all(workers);
-    };
+    }, []);
 
     const handleGenerateClick = async () => {
         setAppState('generating');
@@ -501,12 +510,12 @@ function App() {
         setAppState('results-shown');
     };
 
-    const handleSelectProvince = (provinceName: string) => {
+    const handleSelectProvince = useCallback((provinceName: string) => {
         setSelectedProvince(provinceName);
-        if (!generatedImages[provinceName]) {
+        if (!generatedImagesRef.current[provinceName]) {
             generateImagesForProvince(provinceName);
         }
-    };
+    }, [generateImagesForProvince]);
 
     const handleRefreshImage = async (activityName: string) => {
         if (!uploadedImage) return;
@@ -784,6 +793,44 @@ function App() {
     const handleCloseInfoModal = () => {
         setInfoModalState(prev => ({ ...prev, isOpen: false }));
     };
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            // Only act when the results are shown or generating
+            if (appState !== 'generating' && appState !== 'results-shown') {
+                return;
+            }
+
+            // Don't interfere if the user is typing in an input field or the modal is open
+            const target = event.target as HTMLElement;
+            if (infoModalState.isOpen || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+                return;
+            }
+
+            const currentIndex = PROVINCE_NAMES.indexOf(selectedProvince);
+            let newProvince: string | null = null;
+
+            if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                const newIndex = (currentIndex - 1 + PROVINCE_NAMES.length) % PROVINCE_NAMES.length;
+                newProvince = PROVINCE_NAMES[newIndex];
+            } else if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                const newIndex = (currentIndex + 1) % PROVINCE_NAMES.length;
+                newProvince = PROVINCE_NAMES[newIndex];
+            }
+
+            if (newProvince) {
+                handleSelectProvince(newProvince);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [appState, selectedProvince, handleSelectProvince, infoModalState.isOpen]);
 
     return (
         <main className="bg-gradient-to-b from-red-50 to-white text-neutral-800 h-screen w-full flex flex-col items-center p-4 overflow-hidden relative">
