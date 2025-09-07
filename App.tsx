@@ -380,6 +380,15 @@ const useMediaQuery = (query: string) => {
     return matches;
 };
 
+// A helper hook to get the previous value of a prop or state.
+const usePrevious = <T,>(value: T): T | undefined => {
+    const ref = React.useRef<T>();
+    React.useEffect(() => {
+        ref.current = value;
+    });
+    return ref.current;
+};
+
 function App() {
     const [uploadedImage, setUploadedImage] = useState<string | null>(null);
     const [generatedImages, setGeneratedImages] = useState<Record<string, Record<string, ActivityImages>>>({});
@@ -399,6 +408,8 @@ function App() {
     const dragAreaRef = useRef<HTMLDivElement>(null);
     const [draggedCard, setDraggedCard] = useState<string | null>(null);
     const isMobile = useMediaQuery('(max-width: 768px)');
+    const [isMuted, setIsMuted] = useState(false);
+    const audioContextRef = useRef<AudioContext | null>(null);
 
     // Use refs to hold the latest state for stable callbacks, preventing unnecessary re-renders.
     const uploadedImageRef = useRef(uploadedImage);
@@ -408,6 +419,87 @@ function App() {
     generatedImagesRef.current = generatedImages;
 
     const originalSubtitle = "Your face, Indonesia's heritage. A cultural photo journey.";
+
+    const initAudio = useCallback(() => {
+        if (!audioContextRef.current) {
+            try {
+                // @ts-ignore
+                audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                console.error("Web Audio API is not supported in this browser.", e);
+            }
+        }
+    }, []);
+
+    const playSound = useCallback((type: 'shutter' | 'melody' | 'click' | 'swoosh') => {
+        if (isMuted || !audioContextRef.current) return;
+        const ctx = audioContextRef.current;
+        const now = ctx.currentTime;
+
+        if (type === 'shutter') {
+            // A sharp, modern camera shutter/blitz sound
+            // 1. Generate white noise for a crisp sound source
+            const bufferSize = ctx.sampleRate * 0.05; // A very short duration
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const output = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+
+            // 2. Use a bandpass filter to shape the noise into a sharp "click"
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(4000, now); // High frequency for a sharp "tick"
+            filter.Q.setValueAtTime(20, now); // A high Q value makes the filter very narrow and resonant
+
+            // 3. Create a gain envelope for a very fast attack and decay
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0.5, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04); // Extremely fast decay
+
+            // 4. Connect the audio graph and play the sound
+            noise.connect(filter).connect(gain).connect(ctx.destination);
+            noise.start(now);
+            noise.stop(now + 0.05);
+        } else if (type === 'melody') {
+            const notes = [392.00, 523.25, 587.33]; // G4, C5, D5
+            notes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + i * 0.2);
+                gain.gain.setValueAtTime(0.2, now + i * 0.2);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.2 + 0.4);
+                osc.connect(gain).connect(ctx.destination);
+                osc.start(now + i * 0.2);
+                osc.stop(now + i * 0.2 + 0.5);
+            });
+        } else if (type === 'click') {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, now);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            osc.connect(gain).connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        } else if (type === 'swoosh') {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            osc.connect(gain).connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        }
+
+    }, [isMuted]);
 
     const handleCardHover = (caption: string, imageUrl?: string) => {
         if (!isMobile) {
@@ -429,6 +521,7 @@ function App() {
 
     const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
+            initAudio(); // Initialize audio on first user interaction
             const file = e.target.files[0];
             const reader = new FileReader();
             reader.onloadend = () => {
@@ -505,20 +598,23 @@ function App() {
     }, []);
 
     const handleGenerateClick = async () => {
+        playSound('click');
         setAppState('generating');
         await generateImagesForProvince(selectedProvince);
         setAppState('results-shown');
     };
 
     const handleSelectProvince = useCallback((provinceName: string) => {
+        playSound('click');
         setSelectedProvince(provinceName);
         if (!generatedImagesRef.current[provinceName]) {
             generateImagesForProvince(provinceName);
         }
-    }, [generateImagesForProvince]);
+    }, [generateImagesForProvince, playSound]);
 
     const handleRefreshImage = async (activityName: string) => {
         if (!uploadedImage) return;
+        playSound('click');
 
         const activityData = generatedImages[selectedProvince]?.[activityName];
         if (!activityData || activityData.images[activityData.currentIndex]?.status === 'pending') return;
@@ -573,6 +669,7 @@ function App() {
     };
     
     const handlePrevImage = (activityName: string) => {
+        playSound('swoosh');
         setGeneratedImages(prev => {
             const activity = prev[selectedProvince]?.[activityName];
             if (!activity || activity.currentIndex <= 0) return prev;
@@ -659,6 +756,8 @@ function App() {
         const activityData = generatedImages[selectedProvince]?.[activityName];
         if (!activityData) return;
 
+        playSound('swoosh');
+
         if (activityData.currentIndex < activityData.images.length - 1) {
             setGeneratedImages(prev => ({
                 ...prev,
@@ -672,10 +771,12 @@ function App() {
             }));
             return;
         }
+        // FIX: The 'generateImageVariation' function requires the 'activityName' to create a new image.
         generateImageVariation(activityName);
     };
 
     const handleReset = () => {
+        playSound('click');
         setUploadedImage(null);
         setGeneratedImages({});
         setAppState('idle');
@@ -683,6 +784,7 @@ function App() {
     };
 
     const handleDownloadIndividualImage = (activityName: string) => {
+        playSound('click');
         const activityData = generatedImages[selectedProvince]?.[activityName];
         const image = activityData?.images[activityData.currentIndex];
         if (image?.status === 'done' && image.url) {
@@ -696,6 +798,7 @@ function App() {
     };
 
     const handleDownloadAlbum = async () => {
+        playSound('click');
         setIsDownloading(true);
         try {
             const currentProvinceImages = generatedImages[selectedProvince];
@@ -739,6 +842,7 @@ function App() {
     };
 
     const handleShare = async () => {
+        playSound('click');
         const shareData = {
             title: 'Nusantara Portraits',
             text: 'Create your own cultural photo journey with AI!',
@@ -759,6 +863,7 @@ function App() {
     };
 
     const handleShowCulturalInfo = async (activityName: string) => {
+        playSound('click');
         const activity = PROVINCES[selectedProvince]?.find(a => a.activity === activityName);
         if (!activity) return;
 
@@ -793,6 +898,31 @@ function App() {
     const handleCloseInfoModal = () => {
         setInfoModalState(prev => ({ ...prev, isOpen: false }));
     };
+
+    // Effect for playing melody on results shown
+    const prevAppState = usePrevious(appState);
+    useEffect(() => {
+        if (appState === 'results-shown' && prevAppState === 'generating') {
+            playSound('melody');
+        }
+    }, [appState, prevAppState, playSound]);
+
+    // Effect for playing shutter sound when an image is done
+    const prevGeneratedImages = usePrevious(generatedImages);
+    useEffect(() => {
+        const countDoneImages = (images: typeof generatedImages) =>
+            Object.values(images).reduce((provinceAcc, province) =>
+                provinceAcc + Object.values(province).reduce((activityAcc, activity) =>
+                    activityAcc + activity.images.filter(img => img.status === 'done').length
+                , 0)
+            , 0);
+        
+        if (isMuted || !prevGeneratedImages || !Object.keys(prevGeneratedImages).length) return;
+
+        if (countDoneImages(generatedImages) > countDoneImages(prevGeneratedImages)) {
+            playSound('shutter');
+        }
+    }, [generatedImages, prevGeneratedImages, isMuted, playSound]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -958,6 +1088,7 @@ function App() {
                                                     currentIndex={activityData?.currentIndex}
                                                     totalImages={activityData?.images.length}
                                                     isMobile={isMobile}
+                                                    playSound={playSound}
                                                 />
                                             </div>
                                         )
@@ -999,6 +1130,7 @@ function App() {
                                                 isMobile={isMobile}
                                                 onDragStart={() => setDraggedCard(activity.activity)}
                                                 onDragEnd={() => setDraggedCard(null)}
+                                                playSound={playSound}
                                             />
                                         </motion.div>
                                     );
@@ -1031,13 +1163,14 @@ function App() {
                                 onSelectProvince={handleSelectProvince}
                                 generatedImages={generatedImages}
                                 allProvincesData={PROVINCES}
+                                playSound={playSound}
                             />
                         </div>
                     </div>
                 </motion.div>
             )}
             
-            <Footer />
+            <Footer isMuted={isMuted} onToggleMute={() => setIsMuted(prev => !prev)} />
 
             <CulturalInfoModal
                 isOpen={infoModalState.isOpen}

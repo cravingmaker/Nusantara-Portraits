@@ -25,6 +25,7 @@ interface PolaroidCardProps {
     isMobile?: boolean;
     onDragStart?: () => void;
     onDragEnd?: () => void;
+    playSound?: (sound: 'click' | 'swoosh') => void;
 }
 
 const LoadingSpinner = () => (
@@ -55,7 +56,7 @@ const Placeholder = () => (
 );
 
 
-const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, error, dragConstraintsRef, onRegenerate, onDownload, onShowInfo, onNext, onPrev, currentIndex = 0, totalImages = 1, isMobile, onDragStart, onDragEnd }) => {
+const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, error, dragConstraintsRef, onRegenerate, onDownload, onShowInfo, onNext, onPrev, currentIndex = 0, totalImages = 1, isMobile, onDragStart, onDragEnd, playSound }) => {
     const [isDeveloped, setIsDeveloped] = useState(false);
     const [isImageLoaded, setIsImageLoaded] = useState(false);
     const lastShakeTime = useRef(0);
@@ -123,6 +124,7 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
+                                        playSound?.('click');
                                         onRegenerate();
                                     }}
                                     className="p-2 bg-black/50 rounded-full text-white hover:bg-black/75 focus:outline-none focus:ring-2 focus:ring-white"
@@ -137,6 +139,7 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation(); // Prevent drag from starting on click
+                                        playSound?.('click');
                                         onDownload();
                                     }}
                                     className="p-2 bg-black/50 rounded-full text-white hover:bg-black/75 focus:outline-none focus:ring-2 focus:ring-white"
@@ -151,6 +154,7 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
+                                        playSound?.('click');
                                         onShowInfo();
                                     }}
                                     className="p-2 bg-black/50 rounded-full text-white hover:bg-black/75 focus:outline-none focus:ring-2 focus:ring-white"

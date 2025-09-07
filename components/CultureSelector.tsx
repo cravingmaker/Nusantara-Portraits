@@ -23,6 +23,7 @@ interface ProvinceSelectorProps {
     onSelectProvince: (province: string) => void;
     generatedImages: Record<string, Record<string, ActivityImages>>;
     allProvincesData: Record<string, { activity: string, location: string }[]>;
+    playSound?: (sound: 'click') => void;
 }
 
 const SmallLoadingSpinner = () => (
@@ -40,6 +41,7 @@ const CultureSelector: React.FC<ProvinceSelectorProps> = ({
     onSelectProvince,
     generatedImages,
     allProvincesData,
+    playSound
 }) => {
     return (
         <div 
@@ -56,7 +58,12 @@ const CultureSelector: React.FC<ProvinceSelectorProps> = ({
                 return (
                     <button
                         key={province}
-                        onClick={() => onSelectProvince(province)}
+                        onClick={() => {
+                            if (province !== selectedProvince) {
+                                playSound?.('click');
+                                onSelectProvince(province);
+                            }
+                        }}
                         className={cn(
                             "flex-shrink-0 w-32 h-44 bg-neutral-100 rounded-md p-2 flex flex-col items-center justify-start relative transition-all duration-300 transform hover:scale-105 hover:-translate-y-2",
                             isSelected ? 'border-4 border-yellow-400 shadow-lg' : 'border-2 border-transparent'

@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import type { GenerateContentResponse } from "@google/genai";
 
 const API_KEY = process.env.API_KEY;
@@ -55,9 +55,13 @@ async function callGeminiWithRetry(imagePart: object, textPart: object): Promise
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
+            // FIX: Added required `config` with `responseModalities` for the image editing model as per the documentation.
             return await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image-preview',
                 contents: { parts: [imagePart, textPart] },
+                config: {
+                    responseModalities: [Modality.IMAGE, Modality.TEXT],
+                },
             });
         } catch (error) {
             console.error(`Error calling Gemini API (Attempt ${attempt}/${maxRetries}):`, error);
