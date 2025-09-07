@@ -534,11 +534,43 @@ function App() {
         }
     };
 
-    const generateImagesForProvince = useCallback(async (provinceName: string) => {
-        if (!uploadedImageRef.current) return;
+    const processActivityGeneration = useCallback(async (activity: { activity: string, location: string }, provinceName: string) => {
+        if (!uploadedImageRef.current) {
+            console.error("Uploaded image not found during generation attempt.");
+            return;
+        }
         const currentUploadedImage = uploadedImageRef.current;
 
+        try {
+            const prompt = `Reimagine the person in this photo wearing a traditional ${provinceName} cultural costume while ${activity.activity} in ${activity.location}. The output must be a photorealistic, respectful, and beautiful image celebrating Indonesian culture.`;
+            const resultUrl = await generateCulturalImage(currentUploadedImage, prompt, provinceName);
+            setGeneratedImages(prev => ({
+                ...prev,
+                [provinceName]: {
+                    ...prev[provinceName],
+                    [activity.activity]: {
+                        images: [{ status: 'done', url: resultUrl }],
+                        currentIndex: 0,
+                    },
+                },
+            }));
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
+            setGeneratedImages(prev => ({
+                ...prev,
+                [provinceName]: {
+                    ...prev[provinceName],
+                    [activity.activity]: {
+                        images: [{ status: 'error', error: errorMessage }],
+                        currentIndex: 0,
+                    },
+                },
+            }));
+            console.error(`Failed to generate/retry image for ${provinceName} - ${activity.activity}:`, err);
+        }
+    }, []);
 
+    const generateImagesForProvince = useCallback(async (provinceName: string) => {
         const activities = PROVINCES[provinceName];
         if (!activities) return;
 
@@ -546,7 +578,6 @@ function App() {
         setGeneratedImages(prev => {
             const newProvinceImages: Record<string, ActivityImages> = {};
             activities.forEach(activity => {
-                // FIX: Explicitly cast 'pending' to ImageStatus to prevent TypeScript from widening its type to 'string'.
                 newProvinceImages[activity.activity] = { images: [{ status: 'pending' as ImageStatus }], currentIndex: 0 };
             });
             return { ...prev, [provinceName]: newProvinceImages };
@@ -555,47 +586,55 @@ function App() {
         const concurrencyLimit = 2;
         const activitiesQueue = [...activities];
 
-        const processActivity = async (activity: { activity: string, location: string }) => {
-            try {
-                const prompt = `Reimagine the person in this photo wearing a traditional ${provinceName} cultural costume while ${activity.activity} in ${activity.location}. The output must be a photorealistic, respectful, and beautiful image celebrating Indonesian culture.`;
-                const resultUrl = await generateCulturalImage(currentUploadedImage, prompt, provinceName);
-                setGeneratedImages(prev => ({
-                    ...prev,
-                    [provinceName]: {
-                        ...prev[provinceName],
-                        [activity.activity]: {
-                            ...prev[provinceName][activity.activity],
-                            images: [{ status: 'done', url: resultUrl }],
-                        },
-                    },
-                }));
-            } catch (err) {
-                const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
-                setGeneratedImages(prev => ({
-                    ...prev,
-                    [provinceName]: {
-                        ...prev[provinceName],
-                        [activity.activity]: {
-                             ...prev[provinceName][activity.activity],
-                            images: [{ status: 'error', error: errorMessage }],
-                        },
-                    },
-                }));
-                console.error(`Failed to generate image for ${provinceName} - ${activity.activity}:`, err);
-            }
-        };
-
         const workers = Array(concurrencyLimit).fill(null).map(async () => {
             while (activitiesQueue.length > 0) {
                 const activity = activitiesQueue.shift();
                 if (activity) {
-                    await processActivity(activity);
+                    await processActivityGeneration(activity, provinceName);
                 }
             }
         });
 
         await Promise.all(workers);
-    }, []);
+    }, [processActivityGeneration]);
+
+    const retryFailedImages = useCallback(async (provinceName: string) => {
+        const provinceData = generatedImagesRef.current[provinceName];
+        if (!provinceData) return;
+
+        // Find activities that failed specifically due to rate limiting
+        const activitiesToRetry = PROVINCES[provinceName].filter(activity => {
+            const image = provinceData[activity.activity]?.images?.[0];
+            return image?.status === 'error' && image.error?.toLowerCase().includes('rate limit');
+        });
+
+        if (activitiesToRetry.length === 0) return;
+
+        console.log(`Retrying ${activitiesToRetry.length} rate-limited images for ${provinceName}...`);
+
+        // Set status to pending for the images we are about to retry
+        setGeneratedImages(prev => {
+            const newProvinceData = { ...prev[provinceName] };
+            activitiesToRetry.forEach(activity => {
+                newProvinceData[activity.activity] = { images: [{ status: 'pending' as ImageStatus }], currentIndex: 0 };
+            });
+            return { ...prev, [provinceName]: newProvinceData };
+        });
+
+        const concurrencyLimit = 2;
+        const activitiesQueue = [...activitiesToRetry];
+
+        const workers = Array(concurrencyLimit).fill(null).map(async () => {
+            while (activitiesQueue.length > 0) {
+                const activity = activitiesQueue.shift();
+                if (activity) {
+                    await processActivityGeneration(activity, provinceName);
+                }
+            }
+        });
+
+        await Promise.all(workers);
+    }, [processActivityGeneration]);
 
     const handleGenerateClick = async () => {
         playSound('click');
@@ -607,10 +646,22 @@ function App() {
     const handleSelectProvince = useCallback((provinceName: string) => {
         playSound('click');
         setSelectedProvince(provinceName);
-        if (!generatedImagesRef.current[provinceName]) {
+        const existingProvinceData = generatedImagesRef.current[provinceName];
+
+        if (!existingProvinceData) {
             generateImagesForProvince(provinceName);
+        } else {
+            // Check if any image in this province failed due to a rate limit
+            const hasRateLimitError = PROVINCES[provinceName].some(activity => {
+                const image = existingProvinceData[activity.activity]?.images?.[0];
+                return image?.status === 'error' && image.error?.toLowerCase().includes('rate limit');
+            });
+
+            if (hasRateLimitError) {
+                retryFailedImages(provinceName);
+            }
         }
-    }, [generateImagesForProvince, playSound]);
+    }, [generateImagesForProvince, playSound, retryFailedImages]);
 
     const handleRefreshImage = async (activityName: string) => {
         if (!uploadedImage) return;
