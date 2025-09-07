@@ -10,6 +10,7 @@ import CultureSelector from './components/CultureSelector';
 import CulturalInfoModal from './components/CulturalInfoModal';
 import { createAlbumPage } from './lib/albumUtils';
 import Footer from './components/Footer';
+import { cn } from './lib/utils';
 
 const PROVINCES: Record<string, { activity: string, location: string }[]> = {
     Aceh: [
@@ -362,8 +363,8 @@ interface InfoModalState {
 }
 
 
-const primaryButtonClasses = "font-permanent-marker text-lg text-center text-yellow-300 bg-yellow-400/20 backdrop-blur-sm border-2 border-yellow-400/80 py-2 px-6 rounded-sm transform transition-all duration-200 hover:scale-105 hover:-rotate-2 hover:bg-yellow-400 hover:text-black";
-const secondaryButtonClasses = "font-permanent-marker text-lg text-center text-white bg-white/10 backdrop-blur-sm border-2 border-white/80 py-2 px-6 rounded-sm transform transition-transform duration-200 hover:scale-105 hover:rotate-2 hover:bg-white hover:text-black";
+const primaryButtonClasses = "font-permanent-marker text-lg text-center text-white bg-[#AE2012] backdrop-blur-sm border-2 border-[#9B2226] py-2 px-6 rounded-sm transform transition-all duration-200 hover:scale-105 hover:-rotate-2 hover:bg-[#9B2226]";
+const secondaryButtonClasses = "font-permanent-marker text-lg text-center text-[#AE2012] bg-white/50 backdrop-blur-sm border-2 border-[#AE2012] py-2 px-6 rounded-sm transform transition-transform duration-200 hover:scale-105 hover:rotate-2 hover:bg-[#AE2012] hover:text-white";
 
 const useMediaQuery = (query: string) => {
     const [matches, setMatches] = useState(false);
@@ -386,6 +387,8 @@ function App() {
     const [isDownloading, setIsDownloading] = useState<boolean>(false);
     const [appState, setAppState] = useState<'idle' | 'image-uploaded' | 'generating' | 'results-shown'>('idle');
     const [hoveredCaption, setHoveredCaption] = useState<string | null>(null);
+    const [hoveredImageUrl, setHoveredImageUrl] = useState<string | null>(null);
+    const [isHeaderInverted, setIsHeaderInverted] = useState(false);
     const [infoModalState, setInfoModalState] = useState<InfoModalState>({
         isOpen: false,
         isLoading: false,
@@ -393,89 +396,27 @@ function App() {
         content: '',
         error: null,
     });
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-    const activeAudioProvince = useRef<string | null>(null);
-    const [isPlaying, setIsPlaying] = useState<boolean>(false);
     const dragAreaRef = useRef<HTMLDivElement>(null);
+    const [draggedCard, setDraggedCard] = useState<string | null>(null);
     const isMobile = useMediaQuery('(max-width: 768px)');
 
     const originalSubtitle = "Your face, Indonesia's heritage. A cultural photo journey.";
 
-    useEffect(() => {
-        if (!audioRef.current) {
-            audioRef.current = new Audio();
-        }
-        const audioEl = audioRef.current;
-
-        const onPlay = () => setIsPlaying(true);
-        const onPauseOrEnd = () => setIsPlaying(false);
-        const onError = (e: Event) => {
-            console.error(`Audio error for ${audioEl.src}:`, e);
-            setIsPlaying(false);
-        };
-
-        audioEl.addEventListener('play', onPlay);
-        audioEl.addEventListener('pause', onPauseOrEnd);
-        audioEl.addEventListener('ended', onPauseOrEnd);
-        audioEl.addEventListener('error', onError);
-
-        const shouldPlayAudio = appState === 'generating' || appState === 'results-shown';
-
-        if (shouldPlayAudio) {
-            const provinceName = selectedProvince;
-            
-            if (activeAudioProvince.current !== provinceName) {
-                const audioSrc = `/voiceovers/${encodeURIComponent(provinceName)}.mp3`;
-                
-                audioEl.src = audioSrc; // Use relative path directly
-                activeAudioProvince.current = provinceName;
-                
-                audioEl.play().catch(e => {
-                    console.warn(`Autoplay for ${provinceName} was prevented.`, e);
-                });
-            }
-        } else {
-            audioEl.pause();
-            activeAudioProvince.current = null;
-        }
-
-        return () => {
-            audioEl.removeEventListener('play', onPlay);
-            audioEl.removeEventListener('pause', onPauseOrEnd);
-            audioEl.removeEventListener('ended', onPauseOrEnd);
-            audioEl.removeEventListener('error', onError);
-        };
-    }, [selectedProvince, appState]);
-
-    const handleTogglePlay = () => {
-        const audioEl = audioRef.current;
-        if (!audioEl) return;
-    
-        if (audioEl.paused) {
-            const provinceName = selectedProvince;
-            const audioSrc = `/voiceovers/${encodeURIComponent(provinceName)}.mp3`;
-
-            // The browser resolves the full URL from the relative path,
-            // so we check if the current `src` ends with our desired path.
-            if (!audioEl.src || !audioEl.src.endsWith(audioSrc)) {
-                audioEl.src = audioSrc;
-                activeAudioProvince.current = provinceName;
-            }
-            audioEl.play().catch(e => console.error("Error on manual play:", e));
-        } else {
-            audioEl.pause();
-        }
-    };
-
-    const handleCardHover = (caption: string) => {
+    const handleCardHover = (caption: string, imageUrl?: string) => {
         if (!isMobile) {
             setHoveredCaption(caption);
+            if (imageUrl) {
+                setHoveredImageUrl(imageUrl);
+                setIsHeaderInverted(true);
+            }
         }
     };
 
     const handleCardLeave = () => {
         if (!isMobile) {
             setHoveredCaption(null);
+            setHoveredImageUrl(null);
+            setIsHeaderInverted(false);
         }
     };
 
@@ -641,7 +582,17 @@ function App() {
     };
 
     const generateImageVariation = async (activityName: string) => {
-        if (!uploadedImage) return;
+        const activityData = generatedImages[selectedProvince]?.[activityName];
+        if (!activityData) return;
+
+        const currentImage = activityData.images[activityData.currentIndex];
+        // Use the current image if available, otherwise fall back to the original upload.
+        const sourceImageUrl = (currentImage?.status === 'done' && currentImage.url) ? currentImage.url : uploadedImage;
+
+        if (!sourceImageUrl) {
+            console.error("No source image available to generate a variation.");
+            return;
+        }
 
         const activity = PROVINCES[selectedProvince].find(a => a.activity === activityName);
         if (!activity) return;
@@ -663,8 +614,8 @@ function App() {
         });
 
         try {
-            const prompt = `Reimagine the person in this photo wearing a traditional ${selectedProvince} cultural costume while ${activity.activity} in ${activity.location}. The output must be a photorealistic, respectful, and beautiful image celebrating Indonesian culture. Use a different pose or camera view.`;
-            const resultUrl = await generateCulturalImage(uploadedImage, prompt, selectedProvince);
+            const prompt = `Based on the person in the input image, generate a new version. It is crucial that the person's facial features, hairstyle, and the exact design of their traditional ${selectedProvince} costume remain completely consistent. The only change should be the camera's point of view or the person's pose while they are ${activity.activity} in ${activity.location}. The image must be photorealistic, respectful, and beautifully celebrate Indonesian culture.`;
+            const resultUrl = await generateCulturalImage(sourceImageUrl, prompt, selectedProvince);
             setGeneratedImages(prev => {
                 const currentActivity = prev[selectedProvince][activityName];
                 const newImages = [...currentActivity.images];
@@ -835,12 +786,36 @@ function App() {
     };
 
     return (
-        <main className="bg-black text-neutral-200 min-h-screen w-full flex flex-col items-center justify-between p-4 overflow-hidden relative">
-            <div className="absolute top-0 left-0 w-full h-full bg-grid-white/[0.05]"></div>
+        <main className="bg-gradient-to-b from-red-50 to-white text-neutral-800 h-screen w-full flex flex-col items-center p-4 overflow-hidden relative">
+            <div className="absolute top-0 left-0 w-full h-full bg-grid-black/[0.05] z-0"></div>
             
+            <AnimatePresence>
+                {hoveredImageUrl && !isMobile && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                        className="absolute inset-0 w-full h-full z-1"
+                        style={{
+                            backgroundImage: `url(${hoveredImageUrl})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            filter: 'blur(100px) brightness(0.95) saturate(1.1)',
+                            transform: 'scale(1.2)',
+                        }}
+                    />
+                )}
+            </AnimatePresence>
+
             <div className="z-10 flex flex-col items-center justify-center w-full flex-1">
-                <div className="text-center mb-10">
-                    <h1 className="text-6xl md:text-8xl font-caveat font-bold text-neutral-100">Nusantara Portraits</h1>
+                <div className="text-center mb-10 transition-colors duration-300">
+                    <h1 className={cn(
+                        "text-6xl md:text-8xl font-caveat font-bold transition-all duration-300",
+                        isHeaderInverted ? 'text-white drop-shadow-lg' : 'text-[#9B2226]'
+                    )}>
+                        Nusantara Portraits
+                    </h1>
                     <div className="relative h-8 mt-2 overflow-hidden">
                         <AnimatePresence>
                             <motion.p
@@ -849,7 +824,10 @@ function App() {
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -20 }}
                                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                className="absolute inset-0 font-permanent-marker text-neutral-300 text-xl tracking-wide"
+                                className={cn(
+                                    "absolute inset-0 font-permanent-marker text-xl tracking-wide transition-all duration-300",
+                                    isHeaderInverted ? 'text-neutral-200 drop-shadow-md' : 'text-neutral-600'
+                                )}
                             >
                                 {hoveredCaption || originalSubtitle}
                             </motion.p>
@@ -862,7 +840,7 @@ function App() {
                         {GHOST_POLAROIDS_CONFIG.map((config, index) => (
                              <motion.div
                                 key={index}
-                                className="absolute w-80 h-[26rem] rounded-md p-4 bg-neutral-100/10 blur-sm"
+                                className="absolute w-80 h-[26rem] rounded-md p-4 bg-black/5 blur-sm"
                                 initial={config.initial}
                                 animate={{
                                     x: "0%", y: "0%", rotate: (Math.random() - 0.5) * 20,
@@ -885,7 +863,7 @@ function App() {
                                  />
                             </label>
                             <input id="file-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleImageUpload} />
-                            <p className="mt-8 font-permanent-marker text-neutral-500 text-center max-w-xs text-lg">
+                            <p className="mt-8 font-permanent-marker text-neutral-600 text-center max-w-xs text-lg">
                                 Click the polaroid to upload your photo and start your cultural journey.
                             </p>
                         </motion.div>
@@ -911,48 +889,51 @@ function App() {
                 )}
 
                 {(appState === 'generating' || appState === 'results-shown') && (
-                     <div className="w-full h-full flex flex-col flex-1">
+                     <>
                         {isMobile ? (
-                            <div className="w-full max-w-sm flex-1 overflow-y-auto mt-4 space-y-8 p-4 mx-auto">
-                                {PROVINCES[selectedProvince].map((activity) => {
-                                    const activityData = generatedImages[selectedProvince]?.[activity.activity];
-                                    const currentImage = activityData?.images[activityData.currentIndex];
-                                    return (
-                                        <div key={activity.activity} className="flex justify-center">
-                                            <PolaroidCard
-                                                caption={`${activity.activity} in ${activity.location}`}
-                                                status={currentImage?.status || 'pending'}
-                                                imageUrl={currentImage?.url}
-                                                error={currentImage?.error}
-                                                onRegenerate={() => handleRefreshImage(activity.activity)}
-                                                onDownload={() => handleDownloadIndividualImage(activity.activity)}
-                                                onShowInfo={() => handleShowCulturalInfo(activity.activity)}
-                                                onNext={() => handleNextImage(activity.activity)}
-                                                onPrev={() => handlePrevImage(activity.activity)}
-                                                currentIndex={activityData?.currentIndex}
-                                                totalImages={activityData?.images.length}
-                                                isMobile={isMobile}
-                                            />
-                                        </div>
-                                    )
-                                })}
+                            <div className="w-full flex items-center">
+                                <div className="flex w-full overflow-x-auto space-x-8 p-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-neutral-700 scrollbar-track-transparent">
+                                    {PROVINCES[selectedProvince].map((activity) => {
+                                        const activityData = generatedImages[selectedProvince]?.[activity.activity];
+                                        const currentImage = activityData?.images[activityData.currentIndex];
+                                        return (
+                                            <div key={activity.activity} className="flex-shrink-0 snap-center">
+                                                <PolaroidCard
+                                                    caption={`${activity.activity} in ${activity.location}`}
+                                                    status={currentImage?.status || 'pending'}
+                                                    imageUrl={currentImage?.url}
+                                                    error={currentImage?.error}
+                                                    onRegenerate={() => handleRefreshImage(activity.activity)}
+                                                    onDownload={() => handleDownloadIndividualImage(activity.activity)}
+                                                    onShowInfo={() => handleShowCulturalInfo(activity.activity)}
+                                                    onNext={() => handleNextImage(activity.activity)}
+                                                    onPrev={() => handlePrevImage(activity.activity)}
+                                                    currentIndex={activityData?.currentIndex}
+                                                    totalImages={activityData?.images.length}
+                                                    isMobile={isMobile}
+                                                />
+                                            </div>
+                                        )
+                                    })}
+                                </div>
                             </div>
                         ) : (
-                            <div ref={dragAreaRef} className="relative w-full max-w-5xl h-[600px] mt-4 mx-auto">
+                            <div ref={dragAreaRef} className="relative w-full flex-1 mt-4">
                                 {PROVINCES[selectedProvince].map((activity, index) => {
                                     const { top, left, rotate } = POSITIONS[index];
                                     const activityData = generatedImages[selectedProvince]?.[activity.activity];
                                     const currentImage = activityData?.images[activityData.currentIndex];
                                     const caption = `${activity.activity} in ${activity.location}`;
+                                    const isDragged = draggedCard === activity.activity;
                                     return (
                                         <motion.div
                                             key={activity.activity}
                                             className="absolute cursor-grab active:cursor-grabbing"
-                                            style={{ top, left }}
+                                            style={{ top, left, zIndex: isDragged ? 10 : 'auto' }}
                                             initial={{ opacity: 0, scale: 0.5, y: 100, rotate: 0 }}
                                             animate={{ opacity: 1, scale: 1, y: 0, rotate: `${rotate}deg` }}
                                             transition={{ type: 'spring', stiffness: 100, damping: 20, delay: index * 0.15 }}
-                                            onHoverStart={() => handleCardHover(caption)}
+                                            onHoverStart={() => handleCardHover(caption, currentImage?.url)}
                                             onHoverEnd={handleCardLeave}
                                         >
                                             <PolaroidCard 
@@ -969,28 +950,44 @@ function App() {
                                                 currentIndex={activityData?.currentIndex}
                                                 totalImages={activityData?.images.length}
                                                 isMobile={isMobile}
+                                                onDragStart={() => setDraggedCard(activity.activity)}
+                                                onDragEnd={() => setDraggedCard(null)}
                                             />
                                         </motion.div>
                                     );
                                 })}
                             </div>
                         )}
-                    </div>
+                    </>
                 )}
             </div>
             
             {(appState === 'generating' || appState === 'results-shown') && (
-                <div className="z-20 w-full max-w-6xl mx-auto mt-auto pt-4">
-                    <CultureSelector
-                        provinces={PROVINCE_NAMES}
-                        selectedProvince={selectedProvince}
-                        onSelectProvince={handleSelectProvince}
-                        generatedImages={generatedImages}
-                        allProvincesData={PROVINCES}
-                        isPlaying={isPlaying}
-                        onTogglePlay={handleTogglePlay}
-                    />
-                </div>
+                <motion.div
+                    className="fixed bottom-0 left-0 right-0 z-30"
+                    initial="collapsed"
+                    whileHover="expanded"
+                    variants={{
+                        collapsed: { y: 'calc(100% - 32px)' },
+                        expanded: { y: 0 },
+                    }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                >
+                    <div className="w-full bg-white/50 backdrop-blur-md rounded-t-lg border-t border-black/10 cursor-pointer">
+                        <div className="w-full flex justify-center pt-2.5 pb-1">
+                            <div className="w-20 h-1.5 bg-black/30 rounded-full"></div>
+                        </div>
+                        <div className="w-full max-w-6xl mx-auto">
+                            <CultureSelector
+                                provinces={PROVINCE_NAMES}
+                                selectedProvince={selectedProvince}
+                                onSelectProvince={handleSelectProvince}
+                                generatedImages={generatedImages}
+                                allProvincesData={PROVINCES}
+                            />
+                        </div>
+                    </div>
+                </motion.div>
             )}
             
             <Footer />

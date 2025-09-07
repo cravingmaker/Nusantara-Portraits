@@ -23,6 +23,8 @@ interface PolaroidCardProps {
     currentIndex?: number;
     totalImages?: number;
     isMobile?: boolean;
+    onDragStart?: () => void;
+    onDragEnd?: () => void;
 }
 
 const LoadingSpinner = () => (
@@ -53,7 +55,7 @@ const Placeholder = () => (
 );
 
 
-const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, error, dragConstraintsRef, onRegenerate, onDownload, onShowInfo, onNext, onPrev, currentIndex = 0, totalImages = 1, isMobile }) => {
+const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, error, dragConstraintsRef, onRegenerate, onDownload, onShowInfo, onNext, onPrev, currentIndex = 0, totalImages = 1, isMobile, onDragStart, onDragEnd }) => {
     const [isDeveloped, setIsDeveloped] = useState(false);
     const [isImageLoaded, setIsImageLoaded] = useState(false);
     const lastShakeTime = useRef(0);
@@ -80,11 +82,6 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
             return () => clearTimeout(timer);
         }
     }, [isImageLoaded]);
-
-    const handleDragStart = () => {
-        // Reset velocity on new drag to prevent false triggers from old data
-        lastVelocity.current = { x: 0, y: 0 };
-    };
 
     const handleDrag = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
         if (!onRegenerate || isMobile) return;
@@ -259,7 +256,12 @@ const PolaroidCard: React.FC<PolaroidCardProps> = ({ imageUrl, caption, status, 
             <DraggableCardBody 
                 className="bg-neutral-100 dark:bg-neutral-100 !p-4 !pb-16 flex flex-col items-center justify-start aspect-[3/4] w-80 max-w-full"
                 dragConstraintsRef={dragConstraintsRef}
-                onDragStart={handleDragStart}
+                onDragStart={(event, info) => {
+                    // Reset velocity on new drag to prevent false triggers from old data
+                    lastVelocity.current = { x: 0, y: 0 };
+                    onDragStart?.();
+                }}
+                onDragEnd={() => onDragEnd?.()}
                 onDrag={handleDrag}
             >
                 {cardInnerContent}

@@ -21,12 +21,14 @@ export const DraggableCardBody = ({
   dragConstraintsRef,
   onDrag,
   onDragStart,
+  onDragEnd,
 }: {
   className?: string;
   children?: React.ReactNode;
   dragConstraintsRef?: React.RefObject<HTMLElement>;
   onDrag?: (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => void;
   onDragStart?: (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => void;
+  onDragEnd?: (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => void;
 }) => {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -104,37 +106,9 @@ export const DraggableCardBody = ({
       }}
       onDragEnd={(event, info) => {
         document.body.style.cursor = "default";
+        onDragEnd?.(event, info);
  
-        const currentVelocityX = velocityX.get();
-        const currentVelocityY = velocityY.get();
- 
-        const velocityMagnitude = Math.sqrt(
-          currentVelocityX * currentVelocityX +
-            currentVelocityY * currentVelocityY,
-        );
-        const bounce = Math.min(0.8, velocityMagnitude / 1000);
- 
-        animate(info.point.x, info.point.x + currentVelocityX * 0.3, {
-          duration: 0.8,
-          // @ts-ignore
-          ease: [0.2, 0, 0, 1],
-          bounce,
-          type: "spring",
-          stiffness: 50,
-          damping: 15,
-          mass: 0.8,
-        });
- 
-        animate(info.point.y, info.point.y + currentVelocityY * 0.3, {
-          duration: 0.8,
-          // @ts-ignore
-          ease: [0.2, 0, 0, 1],
-          bounce,
-          type: "spring",
-          stiffness: 50,
-          damping: 15,
-          mass: 0.8,
-        });
+        // Removed the "fling" animation to make the card stay exactly where it's dropped.
       }}
       style={{
         rotateX,
